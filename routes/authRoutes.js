@@ -10,7 +10,7 @@ router.post('/verify-otp', verifyOtp);
 router.post('/resend-otp', resendOtp);
 router.post('/logout', logout);
 
-router.post('/refresh-token', refreshToken);
+router.post('/refresh-token', refreshToken)
 
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' }));
 
