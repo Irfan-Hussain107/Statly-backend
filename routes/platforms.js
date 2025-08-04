@@ -15,6 +15,6 @@ router.get('/', getConnectedPlatforms);
 router.post('/verify/start', startVerification);
 router.post('/verify/complete', verifyPlatform);
 router.put('/:platform/refresh', refreshPlatformData);
-router.delete('/:platform', disconnectPlatform);
+router.delete('/:platform', disconnectPlatform)
 
 module.exports = router;
