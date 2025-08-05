@@ -115,13 +115,14 @@ exports.refreshToken = async (req, res) => {
 exports.logout = (req, res) => {
     res.cookie('refreshToken', '', {
         httpOnly: true,
-        expires: new Date(0) 
+        expires: new Date(0),
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'None' 
     });
     res.status(200).json({ message: "Logged out successfully." });
 };
 
 exports.googleCallback = (req, res) => {
-    // Passport middleware puts user on req.user
     const { refreshToken } = generateTokens(req.user);
 
     res.cookie('refreshToken', refreshToken, {
