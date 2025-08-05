@@ -2,9 +2,9 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
-const callbackURL = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}/api/auth/google/callback`
-  : `${process.env.SERVER_URL}/api/auth/google/callback`;
+const callbackURL = process.env.NODE_ENV === 'production'
+  ? `${process.env.SERVER_URL}/api/auth/google/callback`
+  : `${process.env.SERVER_URL || 'http://localhost:3000'}/api/auth/google/callback`;
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
@@ -27,7 +27,7 @@ passport.use(new GoogleStrategy({
             const newUser = new User({
                 googleId: profile.id,
                 email: profile.emails[0].value,
-                isEmailVerified: true 
+                isEmailVerified: true
             });
             await newUser.save();
             return done(null, newUser);
@@ -38,3 +38,18 @@ passport.use(new GoogleStrategy({
     }
   }
 ));
+
+passport.serializeUser((user, done) => {
+    done(null, user.id);
+});
+
+passport.deserializeUser(async (id, done) => {
+    try {
+        const user = await User.findById(id);
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
+});
+
+module.exports = passport;

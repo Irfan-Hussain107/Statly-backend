@@ -10,7 +10,6 @@ const generateTokens = (user) => {
     return { accessToken, refreshToken };
 };
 
-
 exports.signup = async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -20,23 +19,24 @@ exports.signup = async (req, res) => {
         }
 
         const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, specialChars: false, lowerCaseAlphabets: false });
-        const otpExpires = Date.now() + 10 * 60 * 1000; 
+        const otpExpires = Date.now() + 10 * 60 * 1000;
 
-        if (user) { 
+        if (user) {
             user.password = await bcrypt.hash(password, 12);
             user.otp = otp;
             user.otpExpires = otpExpires;
             await user.save();
-        } else { 
+        } else {
             const hashedPassword = await bcrypt.hash(password, 12);
             user = new User({ email, password: hashedPassword, otp, otpExpires });
             await user.save();
         }
 
-        await sendEmail(email, "Verify Your Email for Codolio Clone", `Your OTP is: ${otp}`);
+        await sendEmail(email, "Verify Your Email for Statly", `Your OTP is: ${otp}`);
         res.status(201).json({ message: "OTP sent to your email. Please verify." });
 
     } catch (err) {
+        console.error('Signup error:', err);
         res.status(500).json({ message: "Server error during signup." });
     }
 };
@@ -57,19 +57,43 @@ exports.verifyOtp = async (req, res) => {
 
         res.status(200).json({ message: "Email verified successfully. You can now log in." });
     } catch (err) {
+        console.error('OTP verification error:', err);
         res.status(500).json({ message: "Server error during OTP verification." });
     }
 };
 
 exports.resendOtp = async (req, res) => {
-    res.status(200).json({ message: "New OTP sent." });
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({ message: "Email is already verified." });
+        }
+
+        const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, specialChars: false, lowerCaseAlphabets: false });
+        const otpExpires = Date.now() + 10 * 60 * 1000;
+
+        user.otp = otp;
+        user.otpExpires = otpExpires;
+        await user.save();
+
+        await sendEmail(email, "Verify Your Email for Statly", `Your new OTP is: ${otp}`);
+        res.status(200).json({ message: "New OTP sent to your email." });
+    } catch (err) {
+        console.error('Resend OTP error:', err);
+        res.status(500).json({ message: "Server error during OTP resend." });
+    }
 };
 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user || !user.password) { 
+        if (!user || !user.password) {
             return res.status(400).json({ message: "Invalid credentials." });
         }
         if (!user.isEmailVerified) {
@@ -86,12 +110,14 @@ exports.login = async (req, res) => {
         res.cookie('refreshToken', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'None',
-            maxAge: 7 * 24 * 60 * 60 * 1000 
+            sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
         });
 
         res.json({ accessToken });
     } catch (err) {
+        console.error('Login error:', err);
         res.status(500).json({ message: "Server error during login." });
     }
 };
@@ -108,6 +134,7 @@ exports.refreshToken = async (req, res) => {
         const { accessToken } = generateTokens(user);
         res.json({ accessToken });
     } catch (err) {
+        console.error('Refresh token error:', err);
         return res.status(403).json({ message: "Invalid refresh token." });
     }
 };
@@ -115,22 +142,33 @@ exports.refreshToken = async (req, res) => {
 exports.logout = (req, res) => {
     res.cookie('refreshToken', '', {
         httpOnly: true,
-        expires: new Date(0),
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'None' 
+        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+        expires: new Date(0),
+        domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
     });
     res.status(200).json({ message: "Logged out successfully." });
 };
 
 exports.googleCallback = (req, res) => {
-    const { refreshToken } = generateTokens(req.user);
+    try {
+        if (!req.user) {
+            return res.redirect(`${process.env.CLIENT_URL}/login?error=google_auth_failed`);
+        }
 
-    res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'None',
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+        const { accessToken, refreshToken } = generateTokens(req.user);
 
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+        });
+
+        res.redirect(`${process.env.CLIENT_URL}/dashboard?token=${accessToken}`);
+    } catch (error) {
+        console.error('Google callback error:', error);
+        res.redirect(`${process.env.CLIENT_URL}/login?error=google_auth_failed`);
+    }
 };
